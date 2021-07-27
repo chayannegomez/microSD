@@ -1,0 +1,170 @@
+//importar librería de senso DHT22
+#include <DHT.h>
+//importar librerias MicroSD
+#include "FS.h"
+#include "SD.h"
+#include <SPI.h>
+
+//Definir puerto para DHT1
+#define DHTPIN 22
+#define DHTTYPE DHT22
+#define LED 2
+
+DHT dht(DHTPIN, DHTTYPE);
+
+// Define CS pin for the SD card module
+#define SD_CS 5
+// Save reading number on RTC memory
+RTC_DATA_ATTR int readingID = 0;
+String dataMessage;
+
+
+
+//Funciones para DHT22 Temperatura.
+float  ReadDHTTemperature(){
+  float t =  dht.readTemperature();
+  if (isnan(t)) {
+    Serial.println("Failed to read from DHT sensor!");
+    return 0;
+    } 
+    else {
+      Serial.print(F("temperatura: "));
+      Serial.print(t);
+      return t;
+      }
+  }
+
+float  ReadDHTHumidity() {
+  float h = dht.readHumidity();
+  if (isnan(h)) {
+    Serial.println("Failed to read from DHT sensor!");
+    return 0; 
+    }
+     else {
+      Serial.print(F("  Humedad:"));
+      Serial.println(h);
+      return h;
+      }
+  }
+
+// Write to the SD card (DON'T MODIFY THIS FUNCTION)
+void writeFile(fs::FS &fs, const char * path, const char * message) {
+  Serial.printf("Writing file: %s\n", path);
+
+  File file = fs.open(path, FILE_WRITE);
+  if(!file) {
+    Serial.println("Failed to open file for writing");
+    return;
+  }
+  if(file.print(message)) {
+    Serial.println("File written");
+  } else {
+    Serial.println("Write failed");
+  }
+  file.close();
+}
+
+
+// Append data to the SD card (DON'T MODIFY THIS FUNCTION)
+void appendFile(fs::FS &fs, const char * path, const char * message) {
+  Serial.printf("Appending to file: %s\n", path);
+
+  File file = fs.open(path, FILE_APPEND);
+  if(!file) {
+    Serial.println("Failed to open file for appending");
+    return;
+  }
+  if(file.print(message)) {
+    Serial.println("Message appended");
+  } else {
+    Serial.println("Append failed");
+  }
+  file.close();
+}
+
+
+
+
+
+
+//Función inicializar SDCard
+void inicializedSD(){
+  SD.begin(SD_CS); 
+  if(!SD.begin(SD_CS)) {
+    Serial.println("Card Mount Failed");
+    return;
+  }
+  uint8_t cardType = SD.cardType();
+  if(cardType == CARD_NONE) {
+    Serial.println("No SD card attached");
+    return;
+  }
+  Serial.println("Initializing SD card...");
+  if (!SD.begin(SD_CS)) {
+    Serial.println("ERROR - SD card initialization failed!");
+    return; // init failed
+  }
+  
+  // If the data.txt file doesn't exist
+  // Create a file on the SD card and write the data labels
+  File file = SD.open("/data.txt");
+  if(!file) {
+    Serial.println("File doens't exist");
+    Serial.println("Creating file...");
+    writeFile(SD, "/data.txt", "Reading ID, Date, Hour, Temperature \r\n");
+  }
+  else {
+    Serial.println("File already exists");  
+  }
+  file.close();
+}
+
+
+// Write the sensor readings on the SD card
+void logSDCard(float t, float h) {
+  dataMessage = String(readingID) + "," + 
+                String(t) + "," + 
+                String(h)+ "\r\n";
+   digitalWrite(LED,HIGH);
+  Serial.print("Save data: ");
+  Serial.println(dataMessage);
+  appendFile(SD, "/data.txt", dataMessage.c_str());
+  
+}
+
+
+// Define deep sleep options
+uint64_t uS_TO_S_FACTOR = 1000000;  // Conversion factor for micro seconds to seconds
+// Sleep for 10 minutes = 600 seconds
+uint64_t TIME_TO_SLEEP = 598;
+
+
+
+
+void setup() {
+  
+  Serial.begin(115200);
+  dht.begin();
+  float t =  dht.readTemperature();
+  float h = dht.readHumidity();
+  pinMode(LED, OUTPUT);
+  ReadDHTTemperature();
+  ReadDHTHumidity();
+  inicializedSD();
+  delay(1000);
+  // Enable Timer wake_up
+  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+  
+  logSDCard( t,  h);
+  readingID++;
+  delay(1000);
+  digitalWrite(LED,LOW);
+  // Start deep sleep
+  Serial.println("DONE! Going to sleep now.");
+  //esp_deep_sleep_start();
+  ESP.deepSleep(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+}
+
+void loop() {
+    
+}
